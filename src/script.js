@@ -41,12 +41,22 @@ laserCircle.add(laserOrigin)
 // Create a raycaster and an ArrowHelper for visualization
 const raycaster = new THREE.Raycaster()
 const rayHelper = new THREE.ArrowHelper(
-    new THREE.Vector3(0, -laserRadius, 0), // Placeholder direction
-    laserOrigin.position,       // Placeholder origin
-    4,                          // Length of the arrow
-    0xff0000                    // Color
+    new THREE.Vector3(0, -laserRadius, 0),  // Placeholder direction
+    laserOrigin.position,                   // Placeholder origin
+    4,                                      // Length of the arrow
+    0xff0000                                // Color
 );
 scene.add(rayHelper)
+
+// CREATE LASER PLANE
+const maxRayLength = 24
+const rayPlaneGeometry = new THREE.PlaneGeometry(1, maxRayLength)
+rayPlaneGeometry.translate(0, maxRayLength / 2, 0) // Move geometry pivot to bottom
+const rayPlaneMesh = new THREE.Mesh(rayPlaneGeometry, new THREE.MeshBasicMaterial())
+rayPlaneMesh.rotation.z = Math.PI
+rayPlaneMesh.position.set(0, laserRadius, 0)
+laserCircle.add(rayPlaneMesh)
+// LASER PLANE END
 
 /**
  * Events
@@ -114,8 +124,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
  * Debug GUI
  */
 const gui = new GUI()
-gui.add({ eventLeft: eventLeft }, 'eventLeft').name('rotate left');
-gui.add({ eventRight: eventRight }, 'eventRight').name('rotate right');
+gui.add({ eventLeft: eventLeft }, 'eventLeft').name('rotate left')
+gui.add({ eventRight: eventRight }, 'eventRight').name('rotate right')
+gui.add(rayPlaneMesh.scale, 'y', 0, 2)
 
 
 /**
@@ -141,8 +152,17 @@ const tick = () => {
     rayHelper.setDirection(raycaster.ray.direction);
 
     // Test raycaster against all boxes
-    const intersections = raycaster.intersectObjects(boxes);
+    const intersections = raycaster.intersectObjects(boxes)
     handleIntersections(intersections)
+
+    // Update rayPlane
+    let rayLength = maxRayLength
+
+    if (intersections.length > 0) {
+        rayLength = intersections[0].distance // Set ray length to the nearest hit
+    }
+
+    rayPlaneMesh.scale.set(1, rayLength / maxRayLength, 1)
 
     // Render
     renderer.render(scene, camera)
@@ -186,4 +206,3 @@ function handleIntersections(intersections) {
         boxes.forEach((box) => box.material = inactiveMaterial)
     }
 }
-
