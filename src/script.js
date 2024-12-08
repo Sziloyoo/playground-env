@@ -18,9 +18,9 @@ const scene = new THREE.Scene()
 scene.add(new THREE.AxesHelper())
 
 // Define params and arrays
-const boxRadius = 10;
-const laserRadius = 5;
-const boxes = [];
+const boxRadius = 10
+const laserRadius = 5
+const boxes = []
 
 // Create materials for active and inactive boxes
 const activeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 })
@@ -31,8 +31,8 @@ const ring = createRing(boxRadius, 1)
 scene.add(ring)
 
 // Create laser
-const laserCircle = new THREE.Object3D();
-scene.add(laserCircle);
+const laserCircle = new THREE.Object3D()
+scene.add(laserCircle)
 
 const laserOrigin = new THREE.Object3D()
 laserOrigin.position.set(0, laserRadius, 0)
@@ -48,11 +48,54 @@ const rayHelper = new THREE.ArrowHelper(
 );
 scene.add(rayHelper)
 
-// CREATE LASER PLANE
+/**
+ * LASER
+ */
 const maxRayLength = 24
+// LOAD LASER TEXTURE
+const textureLoader = new THREE.TextureLoader();
+const beamTexture = textureLoader.load('noise.png');
+beamTexture.wrapS = THREE.RepeatWrapping
+beamTexture.wrapT = THREE.RepeatWrapping
+beamTexture.flipY = false
+// CREATE LASER SHADER
+const rayShaderMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        u_time: { value: 0.0 },
+        u_length: { value: maxRayLength },
+        u_texture: { value: beamTexture },
+        u_speed: { value: -1.0 },
+        u_brightness: { value: 2.0 }
+    },
+    vertexShader: `
+      varying vec2 v_uv;
+      void main() {
+          v_uv = uv; // Pass UV coordinates to the fragment shader
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+  `,
+    fragmentShader: `
+      uniform float u_time;
+      uniform float u_speed;
+      uniform float u_length;
+      uniform float u_brightness;
+      uniform sampler2D u_texture;
+      varying vec2 v_uv;
+
+      void main() {
+          vec4 texColor = texture2D(u_texture, vec2(v_uv.x, (v_uv.y * u_length) + u_speed * u_time));
+          vec3 color = vec3(0.0, 0.6, 0.0) * u_brightness;
+          gl_FragColor = vec4(texColor.rgb * color, texColor.a);
+      }
+  `,
+    transparent: true,
+    side: THREE.FrontSide
+})
+
+// CREATE LASER PLANE
 const rayPlaneGeometry = new THREE.PlaneGeometry(1, maxRayLength)
 rayPlaneGeometry.translate(0, maxRayLength / 2, 0) // Move geometry pivot to bottom
-const rayPlaneMesh = new THREE.Mesh(rayPlaneGeometry, new THREE.MeshBasicMaterial())
+const rayPlaneMesh = new THREE.Mesh(rayPlaneGeometry, rayShaderMaterial)
 rayPlaneMesh.rotation.z = Math.PI
 rayPlaneMesh.position.set(0, laserRadius, 0)
 laserCircle.add(rayPlaneMesh)
@@ -126,7 +169,6 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 const gui = new GUI()
 gui.add({ eventLeft: eventLeft }, 'eventLeft').name('rotate left')
 gui.add({ eventRight: eventRight }, 'eventRight').name('rotate right')
-gui.add(rayPlaneMesh.scale, 'y', 0, 2)
 
 
 /**
@@ -135,7 +177,7 @@ gui.add(rayPlaneMesh.scale, 'y', 0, 2)
 const clock = new THREE.Clock()
 
 const tick = () => {
-    const elapsedTime = clock.getElapsedTime()
+    const time = clock.getElapsedTime()
 
     // Update controls
     controls.update()
@@ -163,6 +205,9 @@ const tick = () => {
     }
 
     rayPlaneMesh.scale.set(1, rayLength / maxRayLength, 1)
+    // Update shader
+    rayPlaneMesh.material.uniforms.u_time.value = time;
+    rayPlaneMesh.material.uniforms.u_length.value = rayLength;
 
     // Render
     renderer.render(scene, camera)
