@@ -1,96 +1,116 @@
 import * as THREE from 'three';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
-import { PMREMGenerator } from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'; // Import OrbitControls
 import { Pane } from 'tweakpane';
 
 // Scene Setup
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+scene.background = new THREE.Color(0x222222);
+const camera = new THREE.OrthographicCamera(
+    -1, // left
+    1, // right
+    1, // top
+    -1, // bottom
+    -1, // near,
+    1, // far
+);
 const renderer = new THREE.WebGLRenderer({ antialias: true, tonemapping: THREE.CineonToneMapping });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.autoClearColor = false;
 document.body.appendChild(renderer.domElement);
 
-// Add HDRI for reflections and IBL
-const pmremGenerator = new PMREMGenerator(renderer);
-const loader = new RGBELoader();
-let environmentMap
-loader.setPath('./hdri/');
-loader.load('pretoria_gardens_1k.hdr', function (texture) {
-    environmentMap = pmremGenerator.fromEquirectangular(texture).texture;
-    scene.environment = environmentMap;
-    scene.environmentIntensity = 1.0;
-    scene.background = new THREE.Color(0x222222);
-    texture.dispose();
-    pmremGenerator.dispose();
-});
+// Custom shader
+const uniforms = {
+    iTime: { value: 0 },
+    iResolution: { value: new THREE.Vector3() },
+    topColor: { value: new THREE.Color(0, 0, 0) },
+    bottomColor: { value: new THREE.Color(0.094, 0.141, 0.424) },
+    widthFactor: { value: 1.5 },
+    timeScale: { value: 1.0 }
+};
 
-const directionalLight = new THREE.PointLight( 0xffffff, 10.0);
-directionalLight.position.set(2, -1, 2)
-scene.add( directionalLight );
+const plane = new THREE.PlaneGeometry(2, 2);
+const material = new THREE.ShaderMaterial({
+    fragmentShader: `#include <common>
+ 
+uniform vec3 iResolution;
+uniform float iTime;
 
-// Create Cube Geometry and Material with Placeholder PBR Maps
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-
-// Placeholder textures
-const textureLoader = new THREE.TextureLoader();
-const colorTexture = textureLoader.load('./textures/color.jpg');
-colorTexture.encoding = THREE.sRGBEncoding
-const roughnessTexture = textureLoader.load('./textures/roughness.jpg');
-const normalTexture = textureLoader.load('./textures/normal.jpg');
-const metalnessTexture = textureLoader.load('./textures/metalness.jpg');
-
-// Create a MeshStandardMaterial with PBR Maps
-const cubeMaterial = new THREE.MeshStandardMaterial({
-    map: colorTexture,        // Albedo Map
-    //roughnessMap: roughnessTexture,  // Roughness Map
-    normalMap: normalTexture,        // Normal Map
-    //metalnessMap: metalnessTexture,   // Set some metalness
-});
-
-const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-scene.add(cube);
-
-// Set Camera Position
-camera.position.z = 3;
-
-// Add OrbitControls to the camera
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; // Enable smooth damping
-controls.dampingFactor = 0.25; // Set damping factor for smoother movements
-controls.screenSpacePanning = false; // Disable panning along screen space
-controls.maxPolarAngle = Math.PI / 2; // Restrict vertical camera movement
-
-// Set up Tweakpane for controlling environment map intensity
-const pane = new Pane();
-const params = {
-    envMapIntensity: 1.0,
-    lightIntnesity: 10.0,
-    lightPosY: -1.0
+uniform vec3 topColor;
+uniform vec3 bottomColor;
+uniform float widthFactor;
+uniform float timeScale;
+ 
+vec3 calcSine(vec2 uv, float speed, 
+              float frequency, float amplitude, float shift, float offset,
+              vec3 color, float width, float exponent, bool dir)
+{
+    float angle = timeScale * iTime * speed * frequency * -1.0 + (shift + uv.x) * 2.0;
+    
+    float y = sin(angle) * amplitude + offset;
+    float clampY = clamp(0.0, y, y);
+    float diffY = y - uv.y;
+    
+    float dsqr = distance(y, uv.y);
+    float scale = 1.0;
+    
+    if(dir && diffY > 0.0)
+    {
+        dsqr = dsqr * 4.0;
+    }
+    else if(!dir && diffY < 0.0)
+    {
+        dsqr = dsqr * 4.0;
+    }
+    
+    scale = pow(smoothstep(width * widthFactor, 0.0, dsqr), exponent);
+    
+    return min(color * scale, color);
 }
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    vec2 uv = fragCoord.xy / iResolution.xy;
+    vec3 color = vec3(mix(topColor, bottomColor, uv.x * uv.y * 1.1));
+    color += calcSine(uv, 0.2, 0.20, 0.2, 0.0, 0.5,  vec3(0.3, 0.3, 0.3), 0.1, 15.0,false);
+    color += calcSine(uv, 0.4, 0.40, 0.15, 0.0, 0.5, vec3(0.3, 0.3, 0.3), 0.1, 17.0,false);
+    color += calcSine(uv, 0.3, 0.60, 0.15, 0.0, 0.5, vec3(0.3, 0.3, 0.3), 0.05, 23.0,false);
 
-// Add an input field for adjusting the environment map intensity
-const folder = pane.addFolder({ title: "Lights", expanded: true })
+    color += calcSine(uv, 0.1, 0.26, 0.07, 0.0, 0.3, vec3(0.3, 0.3, 0.3), 0.1, 17.0,true);
+    color += calcSine(uv, 0.3, 0.36, 0.07, 0.0, 0.3, vec3(0.3, 0.3, 0.3), 0.1, 17.0,true);
+    color += calcSine(uv, 0.5, 0.46, 0.07, 0.0, 0.3, vec3(0.3, 0.3, 0.3), 0.05, 23.0,true);
+    color += calcSine(uv, 0.2, 0.58, 0.05, 0.0, 0.3, vec3(0.3, 0.3, 0.3), 0.2, 15.0,true);
 
-folder.addBinding(params, 'envMapIntensity', { min: 0, max: 2, step: 0.01 }).on('change', (e) => {
-    scene.environmentIntensity = e.value
+    fragColor = vec4(color,1.0);
+}
+ 
+void main() {
+  mainImage(gl_FragColor, gl_FragCoord.xy);
+}`,
+uniforms: uniforms
 });
+scene.add(new THREE.Mesh(plane, material));
 
-folder.addBinding(params, 'lightIntnesity', { min: 0, max: 20, step: 0.01 }).on('change', (e) => {
-    directionalLight.intensity = e.value
-});
+// Debug UI
+const pane = new Pane();
 
-folder.addBinding(params, 'lightPosY', { min: -3, max: 3, step: 0.1 }).on('change', (e) => {
-    directionalLight.position.y = e.value
+pane.addBinding(uniforms.topColor, 'value', { label: 'Top color'}).on('change', (e) => {
+    uniforms.topColor.value.set(e.value.r/255, e.value.g/255, e.value.b/255);
 });
+pane.addBinding(uniforms.bottomColor, 'value', { label: 'Bottom color' }).on('change', (e) => {
+    uniforms.bottomColor.value.set(e.value.r/255, e.value.g/255, e.value.b/255);
+});
+pane.addBinding(uniforms.widthFactor, 'value', { label: 'Line width', min: 0.25, max: 8 });
+pane.addBinding(uniforms.timeScale, 'value', { label: 'Time scale', min: 0, max: 8 });
+
+
+const clock = new THREE.Clock()
+
 // Animation Loop
 function animate() {
-    requestAnimationFrame(animate);
 
-    // Update the OrbitControls
-    controls.update(); // Only needed if controls.enableDamping or controls.auto-rotation are enabled
-
+    uniforms.iResolution.value.set(window.innerWidth, window.innerHeight, 1);
+    uniforms.iTime.value = clock.getElapsedTime();
+    
     renderer.render(scene, camera);
+    requestAnimationFrame(animate);
 }
 
 animate();
