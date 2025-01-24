@@ -12,7 +12,7 @@ const camera = new THREE.OrthographicCamera(
     -1, // near,
     1, // far
 );
-const renderer = new THREE.WebGLRenderer({ antialias: true, tonemapping: THREE.CineonToneMapping });
+const renderer = new THREE.WebGLRenderer({ antialias: false, tonemapping: THREE.CineonToneMapping });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.autoClearColor = false;
 document.body.appendChild(renderer.domElement);
