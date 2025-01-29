@@ -9,7 +9,7 @@ american_bison
 brontosaurus
 golden_jackal
 sea_scorpions
-sea_turtle
+sea_turtle X
 asian_giant_hornet
 barna_retiheja
 bojtosuszoju_hal
@@ -20,7 +20,7 @@ raptor
 borz
 europai_vidra
 edesvizi_halak
-permian_life
+permian_life X
 eticsiga
 folyami_rak
 gerincesek_egyedfejlodes
@@ -39,4 +39,4 @@ quetzalcoatlus
 kameleon
 stegosaurus
 triceratopsz
-tyrannosaurus
+tyrannosaurus X
